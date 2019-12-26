@@ -6,7 +6,7 @@ import random
 WINDOW_HEIGHT = 500
 WINDOW_WIDTH = 500
 DONE = False
-GAME_FREQUENCY = 50
+GAME_FREQUENCY = 70
 
 pygame.init()
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -39,7 +39,13 @@ class CollisionLine:
         self.color = color
         self.screen = screen
 
-        self.vect = Vector((self.x2 - self.x1), (self.y2 - self.y1))
+        max_x = max(self.x1, self.x2)
+        min_x = min(self.x1, self.x2)
+
+        max_y = max(self.y1, self.y2)
+        min_y = min(self.y1, self.y2)
+
+        self.vect = Vector((max_x - min_x), (max_y - min_y))
         self.norm = norm(self.vect)
         self.basic_vect = multiply_v(1/self.norm, self.vect)
 
@@ -108,25 +114,41 @@ class CollisionLine:
         v_parallel = multiply_v(dot_prod(v_vect, self.basic_vect), self.basic_vect)
         v_perp = sum_v(v_vect, multiply_v(-1, v_parallel))
         new_velocity = sum_v(v_parallel, multiply_v(-1, v_perp))
+        
         return new_velocity
 
+class Player:
+    def __init__(self, name, initial_life=10, death_callback=None):
+        self.name = name
+        self.life = initial_life
+        self.death_callback = death_callback
+
+    def take_hit(self):
+        self.life -= 1
+        if self.life == 0:
+            if self.death_callback is not None:
+                self.death_callback(self.name)
+
 class CollisionChecker:
-    def __init__(self, line, ball):
+    def __init__(self, line, ball, player=None):
         self.line = line
         self.ball = ball
         self.has_intersection = False
-    
+        self.player = player
+
     def update(self):
         inter = self.line.collision_with_ball(self.ball)
         
         if inter and not self.has_intersection:
             reversed_velocity = self.line.revert_velocity(self.ball.v)
-            self.ball.v = reversed_velocity
-
             self.has_intersection = True
+            self.ball.v = reversed_velocity
+            if self.player is not None:
+                self.player.take_hit()
+
         elif not inter:
             self.has_intersection = False
-
+            
 class Ball:
     def __init__(self, screen, x=0, y=0, vx=10, vy=10, radius=10, window_width=WINDOW_WIDTH, window_height=WINDOW_HEIGHT):
         self.x = x
@@ -151,17 +173,27 @@ class CollisionLineGroup:
         self.lines = []
         self.checkers = []
         self.verbose=verbose
+        self.has_intersection = False
 
-    def add_line(self, line):
+    def add_line(self, line, player=None):
         self.lines.append(line)
-        self.checkers.append(CollisionChecker(line, self.ball))
+        if player is not None:
+            self.checkers.append(CollisionChecker(line, self.ball, player=player))
+        else:
+            self.checkers.append(CollisionChecker(line, self.ball))
     
     def update(self):
         for line in self.lines:
             line.draw()
 
+        new_velocity = Vector(0.0, 0.0)
+        velocities = []
+
+        some_activated = False
+
         for checker in self.checkers:
-            checker.update()
+           checker.update()
+            
 
 class ControlledBrick():
     def __init__(self, collision_group, screen, x=0, y=0, vx=10, size_x=40, size_y=5, 
@@ -235,9 +267,11 @@ class MovingCorner:
         self.collision_group.update()
 
 class MovingFrontiers:
-    def __init__(self, collision_group, screen, corner1, corner2, corner3, corner4):
+    def __init__(self, collision_group, screen, corner1, corner2, corner3, corner4, player1, player2):
         self.collision_group = collision_group
         self.screen = screen
+        self.player1 = player1
+        self.player2 = player2
 
         self.corner1 = corner1
         self.corner2 = corner2
@@ -245,13 +279,15 @@ class MovingFrontiers:
         self.corner4 = corner4
 
         self.lines = []
-        self.lines.append(CollisionLine(self.screen, corner1.corner.x, corner1.corner.y, corner2.corner.x, corner2.corner.y, color=(255,0,0)))
-        self.lines.append(CollisionLine(self.screen, corner2.corner.x, corner2.corner.y, corner3.corner.x, corner3.corner.y, color=(255,0,0)))
-        self.lines.append(CollisionLine(self.screen, corner3.corner.x, corner3.corner.y, corner4.corner.x, corner4.corner.y, color=(255,0,0)))
-        self.lines.append(CollisionLine(self.screen, corner4.corner.x, corner4.corner.y, corner1.corner.x, corner1.corner.y, color=(255,0,0)))
+        self.lines.append([CollisionLine(self.screen, corner1.corner.x, corner1.corner.y, corner2.corner.x, corner2.corner.y, 
+            color=(255,0,0)), player1])
+        self.lines.append([CollisionLine(self.screen, corner2.corner.x, corner2.corner.y, corner3.corner.x, corner3.corner.y, color=(255,0,0)), None])
+        self.lines.append([CollisionLine(self.screen, corner3.corner.x, corner3.corner.y, corner4.corner.x, corner4.corner.y, 
+            color=(255,0,0)), player2])
+        self.lines.append([CollisionLine(self.screen, corner4.corner.x, corner4.corner.y, corner1.corner.x, corner1.corner.y, color=(255,0,0)), None])
 
         for line in self.lines:
-            self.collision_group.add_line(line)
+            self.collision_group.add_line(line[0], line[1])
 
     @staticmethod
     def update_line(line, x1, y1, x2, y2):
@@ -262,23 +298,44 @@ class MovingFrontiers:
         line.update_params()
 
     def update(self):
-        MovingFrontiers.update_line(self.lines[0], self.corner1.corner.x, self.corner1.corner.y, self.corner2.corner.x, self.corner2.corner.y)
-        MovingFrontiers.update_line(self.lines[1], self.corner2.corner.x, self.corner2.corner.y, self.corner3.corner.x, self.corner3.corner.y)
-        MovingFrontiers.update_line(self.lines[2], self.corner3.corner.x, self.corner3.corner.y, self.corner4.corner.x, self.corner4.corner.y)
-        MovingFrontiers.update_line(self.lines[3], self.corner4.corner.x, self.corner4.corner.y, self.corner1.corner.x, self.corner1.corner.y)
+        MovingFrontiers.update_line(self.lines[0][0], self.corner1.corner.x, self.corner1.corner.y, self.corner2.corner.x, self.corner2.corner.y)
+        MovingFrontiers.update_line(self.lines[1][0], self.corner2.corner.x, self.corner2.corner.y, self.corner3.corner.x, self.corner3.corner.y)
+        MovingFrontiers.update_line(self.lines[2][0], self.corner3.corner.x, self.corner3.corner.y, self.corner4.corner.x, self.corner4.corner.y)
+        MovingFrontiers.update_line(self.lines[3][0], self.corner4.corner.x, self.corner4.corner.y, self.corner1.corner.x, self.corner1.corner.y)
 
 clock = pygame.time.Clock()
 
+pygame.font.init()
+myfont = pygame.font.SysFont('Comic Sans MS', 15)
+
 ball = Ball(screen, 200, 200, 3, 3, radius=7)
 c_group = CollisionLineGroup(ball, verbose=True)
-SCALE = 30
+SCALE = 40
 
 wp1 = MovingCorner(screen, 2*SCALE, 2*SCALE, SCALE, SCALE, 1, 3)
 wp2 = MovingCorner(screen, WINDOW_WIDTH - 2*SCALE, 2*SCALE, SCALE, SCALE, 3, 2)
 wp3 = MovingCorner(screen, WINDOW_WIDTH - 2*SCALE, WINDOW_HEIGHT - 2*SCALE, SCALE, SCALE, 3, 1)
 wp4 = MovingCorner(screen, 2*SCALE, WINDOW_HEIGHT - 2*SCALE, SCALE, SCALE, 2, 2)
 
-mf = MovingFrontiers(c_group, screen, wp1, wp2, wp3, wp4)
+def player_died(name):
+    screen.fill((0, 0, 0))
+    textsurface = myfont.render('Player %s lost!!!' % name, False, (255, 0, 0))
+    screen.blit(textsurface, (150, 20))
+    pygame.display.flip()
+
+    time.sleep(2)
+
+    player1.life = 10
+    player2.life = 10
+    ball.v.x = 3
+    ball.v.y = 3
+    ball.x = 200
+    ball.y = 200
+
+player1 = Player('player 1', death_callback=player_died)
+player2 = Player('player 2', death_callback=player_died)
+
+mf = MovingFrontiers(c_group, screen, wp1, wp2, wp3, wp4, player1, player2)
 brick1 = ControlledBrick(c_group, screen, 150, WINDOW_HEIGHT - 150, size_x=80, key_left=pygame.K_j, key_right=pygame.K_l)
 brick2 = ControlledBrick(c_group, screen, 150, 150, size_x=80, key_left=pygame.K_a, key_right=pygame.K_d)
 
@@ -299,17 +356,18 @@ obj_updater.add_object(c_group)
 #c_group.add_line(CollisionLine(screen, 200, 400, 250, 20, color=(255,0,0)))
 #c_group.add_line(CollisionLine(screen, 250, 20, 0, 0, color=(255,0,0)))
 
-
-
 while not DONE:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             DONE = True
 
     screen.fill((0, 0, 0))
+    textsurface = myfont.render('Player 1: %d | Player 2: %d' % (player1.life, player2.life), False, (255, 0, 0))
+    screen.blit(textsurface, (150, 20))
 
     obj_updater.update()
     
     pygame.display.flip()
     clock.tick(GAME_FREQUENCY)
+    print()
 
