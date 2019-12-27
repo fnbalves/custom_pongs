@@ -1,102 +1,58 @@
 import pygame
 import time
 
-WINDOW_HEIGHT = 300
-WINDOW_WIDTH = 400
+from pong_classes import *
+
+WINDOW_HEIGHT = 500
+WINDOW_WIDTH = 500
 DONE = False
-GAME_FREQUENCY = 40
+GAME_FREQUENCY = 70
+OFFSET = 20
 
 pygame.init()
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 
-
-class ControlledBrick():
-    def __init__(self, screen, x=0, y=0, vx=10, size_x=40, size_y=5, 
-        window_width=WINDOW_WIDTH, window_height=WINDOW_HEIGHT, key_left=pygame.K_LEFT, key_right=pygame.K_RIGHT):
-        self.x = x
-        self.y = y
-        self.vx = vx
-
-        self.window_width = window_width
-        self.window_height = window_height
-        self.size_x = size_x
-        self.size_y = size_y
-        self.screen = screen
-        self.key_left = key_left
-        self.key_right = key_right
-    
-    def draw(self):
-        pygame.draw.rect(self.screen, (255, 0, 0), (self.x, self.y, self.size_x, self.size_y))
-    
-    def update(self):
-        pressed = pygame.key.get_pressed()
-        
-        if pressed[self.key_right] and (self.x + self.size_x) < self.window_width:
-            self.x += self.vx
-        
-        if pressed[self.key_left] and self.x > 0:
-            self.x -= self.vx
-        
-        self.draw()
-
-class Ball:
-    def __init__(self, screen, x=0, y=0, vx=10, vy=10, radius=10, window_width=WINDOW_WIDTH, window_height=WINDOW_HEIGHT):
-        self.x = x
-        self.y = y
-        self.vx = vx
-        self.vy = vy
-        self.radius = radius
-        self.window_width = window_width
-        self.window_height = window_height
-        self.under_collision_x = False
-        self.under_collision_y = False
-        self.screen = screen
-
-    def draw(self):
-        pygame.draw.circle(self.screen, (0, 128, 255), (self.x, self.y), self.radius)
-
-    def update(self):
-        self.x += self.vx
-        self.y += self.vy
-        self.draw()
-
-    def reverse_vx(self):
-        if not self.under_collision_x:
-            self.vx *= -1
-        self.under_collision_x = True
-
-    def reverse_vy(self):
-        if not self.under_collision_y:
-            self.vy *= -1
-        self.under_collision_y = True
-
-    def check_frontiers(self):
-        if (self.x - self.radius) < 0:
-            self.reverse_vx()
-        elif (self.x + self.radius) > self.window_width:
-            self.reverse_vx()
-        elif (self.y - self.radius) < 0:
-            self.reverse_vy()
-        elif (self.y + self.radius) > self.window_height:
-            self.reverse_vy()
-        else:
-            self.under_collision_x = False
-            self.under_collision_y = False
-
-    def intersects_brick(self, brick):
-        if (-1)*self.radius < (self.x - brick.x) < brick.size_x + self.radius and abs(self.y - brick.y) < self.radius:
-            return True
-        else:
-            return False
-
-    def check_brick(self, brick):
-        if self.intersects_brick(brick):
-            self.reverse_vy()
-
 clock = pygame.time.Clock()
-ball = Ball(screen, 0, 0, 5, 5, radius=3)
-brick_1 = ControlledBrick(screen, 30, 250, size_x=80)
-brick_2 = ControlledBrick(screen, 30, 50, size_x=80, key_left=pygame.K_a, key_right=pygame.K_d)
+
+pygame.font.init()
+myfont = pygame.font.SysFont('Comic Sans MS', 15)
+
+ball = Ball(screen, 200, 200, 3, 3, radius=7)
+
+def player_died(name):
+    screen.fill((0, 0, 0))
+    textsurface = myfont.render('Player %s lost!!!' % name, False, (255, 0, 0))
+    screen.blit(textsurface, (170, 20))
+    pygame.display.flip()
+
+    time.sleep(2)
+
+    player1.life = 10
+    player2.life = 10
+    ball.v.x = 3
+    ball.v.y = 3
+    ball.x = 200
+    ball.y = 200
+
+player1 = Player('player 1', death_callback=player_died)
+player2 = Player('player 2', death_callback=player_died)
+
+c_group = CollisionLineGroup(ball, verbose=True)
+c_group.add_line(CollisionLine(screen, OFFSET, OFFSET, WINDOW_WIDTH - OFFSET, OFFSET, color=(255,0,0)), player=player1)
+c_group.add_line(CollisionLine(screen, WINDOW_WIDTH - OFFSET, OFFSET, WINDOW_WIDTH - OFFSET, WINDOW_HEIGHT - OFFSET, color=(255,0,0)))
+c_group.add_line(CollisionLine(screen, WINDOW_WIDTH - OFFSET, WINDOW_HEIGHT - OFFSET, OFFSET, WINDOW_HEIGHT - OFFSET, color=(255,0,0)), player=player2)
+c_group.add_line(CollisionLine(screen, OFFSET, WINDOW_HEIGHT - OFFSET, OFFSET, OFFSET, color=(255,0,0)), player=player2)
+
+brick1 = ControlledBrick(c_group, screen, 150, WINDOW_HEIGHT - 150, size_x=80, key_left=pygame.K_j, key_right=pygame.K_l)
+brick2 = ControlledBrick(c_group, screen, 150, 150, size_x=80, key_left=pygame.K_a, key_right=pygame.K_d)
+
+obj_updater = ObjectUpdater()
+
+obj_updater.add_object(brick1)
+obj_updater.add_object(brick2)
+obj_updater.add_object(ball)
+obj_updater.add_object(c_group)
+
 
 while not DONE:
     for event in pygame.event.get():
@@ -104,15 +60,12 @@ while not DONE:
             DONE = True
 
     screen.fill((0, 0, 0))
+    textsurface = myfont.render('Player 1: %d | Player 2: %d' % (player1.life, player2.life), False, (255, 0, 0))
+    screen.blit(textsurface, (170, 20))
 
-    ball.update()
-    ball.check_frontiers()
-    ball.check_brick(brick_1)
-    ball.check_brick(brick_2)
-
-    brick_1.update()
-    brick_2.update()
-
+    obj_updater.update()
+    
     pygame.display.flip()
     clock.tick(GAME_FREQUENCY)
+    print()
 
