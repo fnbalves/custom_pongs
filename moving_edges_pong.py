@@ -8,6 +8,7 @@ WINDOW_WIDTH = 500
 DONE = False
 GAME_FREQUENCY = 70
 TEXT_X_POS = 170
+INITIAL_LIFE = 5
 
 pygame.init()
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -34,15 +35,15 @@ def player_died(name):
 
     time.sleep(2)
 
-    player1.life = 10
-    player2.life = 10
+    player1.life = INITIAL_LIFE
+    player2.life = INITIAL_LIFE
     ball.v.x = 3
     ball.v.y = 3
     ball.x = 200
     ball.y = 200
 
-player1 = Player('player 1', death_callback=player_died)
-player2 = Player('player 2', death_callback=player_died)
+player1 = Player('player 1', INITIAL_LIFE, death_callback=player_died)
+player2 = Player('player 2', INITIAL_LIFE, death_callback=player_died)
 
 mf = MovingFrontiers(c_group, screen, wp1, wp2, wp3, wp4, player1, player2)
 
@@ -75,5 +76,4 @@ while not DONE:
     
     pygame.display.flip()
     clock.tick(GAME_FREQUENCY)
-    print()
 
